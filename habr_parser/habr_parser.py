@@ -16,6 +16,11 @@ def load_config(config_path: str = 'config.json') -> dict:
     with open(config_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
+def create_urls(base_url, max_pages):
+    all_urls = [base_url]
+    all_urls.extend([f'{base_url}page{page}/' for page in range(2, max_pages + 1)])
+    return all_urls
+
 def save_to_json(titles, filename):
     """ Сохранение файла в формате json """
     try:
@@ -79,13 +84,19 @@ async def fetch_url(url, retries = 3, timeout_config = None):
                 raise
                                 
 async def main(config):
-    result = await fetch_url(
-        config["habr"]["base_url"], 
-        config["settings"]["retries"], 
-        config["settings"].get("timeout")
-    )
-    titles = parse_titles(result, config["habr"]["selectors"]["title"])
-    if not save_to_json(titles, config["output"]["filename"]):
+    pages_num = config["settings"]["max_pages"]
+    urls = create_urls(config["habr"]["base_url"], pages_num)
+    print(urls)
+    tasks = ([fetch_url(url,
+                        config["settings"]["retries"], 
+                        config["settings"].get("timeout")) 
+                        for url in urls])
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    all_titles = []
+    for result in results:
+        titles = parse_titles(result, config["habr"]["selectors"]["title"])
+        all_titles.extend(titles)
+    if not save_to_json(all_titles, config["output"]["filename"]):
         print('Не удалось сохранить результаты')
 
 if __name__ == '__main__':
